@@ -1,0 +1,144 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>AI Access Control Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+  <style>
+    body{font-family: Arial;background:#f7f9fc;padding:16px}
+    .grid{display:grid;grid-template-columns:1fr 400px;gap:16px}
+    .card{background:white;padding:12px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.08)}
+    #notif{height:600px;overflow:auto}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:6px;border-bottom:1px solid #eee;font-size:13px}
+  </style>
+</head>
+<body>
+  <h2>AI Access Control — Live Dashboard</h2>
+  <div class="grid">
+    <div>
+      <div class="card">
+        <canvas id="decisionChart" height="100"></canvas>
+      </div>
+      <div style="height:12px"></div>
+      <div class="card">
+        <canvas id="actionChart" height="100"></canvas>
+      </div>
+      <div style="height:12px"></div>
+      <div class="card">
+        <h3>Top Files</h3>
+        <ul id="topFiles"></ul>
+      </div>
+    </div>
+
+    <div>
+      <div class="card" style="margin-bottom:12px">
+        <h3>Live Notifications</h3>
+        <div id="notif"></div>
+      </div>
+      <div class="card">
+        <h3>Recent Events</h3>
+        <div style="max-height:240px;overflow:auto">
+          <table id="recentTable">
+            <thead>
+              <tr><th>time</th><th>uid</th><th>file</th><th>action</th><th>dec</th><th>prob</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const socket = io();
+
+// ----------------------- NOTIFICATIONS -----------------------
+function addNotif(evt){
+  const el = document.getElementById('notif');
+  const div = document.createElement('div');
+  div.style.padding='8px';
+  div.style.borderBottom='1px solid #eee';
+  div.innerHTML = `<b>${evt.decision.toUpperCase()}</b> UID:${evt.uid} <br/> <code>${evt.filename}</code> <br/> prob:${evt.probability}`;
+  if(evt.decision==='deny') div.style.background='#fff0f0';
+  el.prepend(div);
+}
+
+// ----------------------- RECENT TABLE -----------------------
+function addRecentRow(evt){
+  const tb = document.querySelector('#recentTable tbody');
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${new Date(evt.timestamp).toLocaleTimeString()}</td>
+                  <td>${evt.uid}</td>
+                  <td style="max-width:200px">${evt.filename}</td>
+                  <td>${evt.action}</td>
+                  <td>${evt.decision}</td>
+                  <td>${evt.probability}</td>`;
+  tb.prepend(tr);
+  while(tb.children.length>50) tb.removeChild(tb.lastChild);
+}
+
+// ----------------------- CHARTS + STATS -----------------------
+let decisionChart, actionChart;
+
+async function loadStats(){
+  const r = await fetch('/api/stats'); 
+  const j = await r.json();
+  const decisions = j.decision_counts || {};
+  const actions = j.action_counts || {};
+  renderDecisionChart(decisions);
+  renderActionChart(actions);
+  document.querySelector('#recentTable tbody').innerHTML='';
+  (j.recent || []).forEach(addRecentRow);
+}
+
+function renderDecisionChart(data){
+  const ctx = document.getElementById('decisionChart').getContext('2d');
+  if(decisionChart) decisionChart.destroy();
+  decisionChart = new Chart(ctx, {
+    type:'pie',
+    data:{labels:Object.keys(data), datasets:[{data:Object.values(data)}]},
+    options:{responsive:true}
+  });
+}
+
+function renderActionChart(data){
+  const ctx = document.getElementById('actionChart').getContext('2d');
+  if(actionChart) actionChart.destroy();
+  actionChart = new Chart(ctx, {
+    type:'bar',
+    data:{labels:Object.keys(data), datasets:[{label:'actions',data:Object.values(data)}]},
+    options:{responsive:true}
+  });
+}
+
+async function loadTopFiles(){
+  const r = await fetch('/api/top_files');
+  const j = await r.json();
+  const list = document.getElementById('topFiles');
+  list.innerHTML='';
+  j.forEach(x=>{
+    const li = document.createElement('li');
+    li.textContent = `${x.filename} (${x.count})`;
+    list.appendChild(li);
+  });
+}
+
+// ----------------------- SOCKET EVENTS -----------------------
+socket.on('connect', ()=>console.log('socket connected'));
+socket.on('new_event', (evt)=>{
+  addNotif(evt);
+  addRecentRow(evt);
+  loadStats();
+  loadTopFiles();
+});
+
+loadStats(); 
+loadTopFiles();
+setInterval(()=>{ loadStats(); loadTopFiles(); }, 15000);
+</script>
+
+</body>
+</html>
+      
