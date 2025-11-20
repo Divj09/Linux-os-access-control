@@ -12,8 +12,6 @@ A real-time Linux monitoring and AI-powered access control system built using:
 
 🖼 Dashboard Preview
 
-Add your image here (make sure the filename matches!):
-
 ![Dashboard Screenshot](screenshot.png)
 
 🚀 Features
